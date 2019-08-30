@@ -199,6 +199,14 @@ def transcribe(speech_filepath, asr_system, settings, save_transcription=True):
         except sr.UnknownValueError:
             print("Amazon not process the speech transcription request")
 
+    elif asr_system == 'deepspeech':
+        try:
+            deepspeech_cmdline = settings.get('deepspeech','cmdline')
+            transcription,transcription_json = recognize_deepspeech(audio, deepspeech_cmdline)
+        except:
+            print('Deepspeech encountered some issue')
+            asr_could_not_be_reached = True
+            
     else: raise ValueError("Invalid asr_system. asr_system = {0}".format(asr_system))
 
     asr_timestamp_ended = time.time()
@@ -269,3 +277,31 @@ def recognize_amazon(audio_data, bot_name, bot_alias, user_id,
 
     return response["inputTranscript"], response
 
+
+
+def recognize_deepspeech(audio_data, cmdline):
+    """
+    Author: Misha Jiline (https://github.com/mjiline)
+    """
+    assert isinstance(audio_data, sr.AudioData), "Data must be audio data"
+    assert isinstance(cmdline, str), "``cmdline`` must be a string"
+
+    try:
+        import tempfile
+        import subprocess
+    except ImportError:
+        raise sr.RequestError("missing tempfile module")
+
+    raw_data = audio_data.get_wav_data(
+        convert_rate=16000, convert_width=2
+    )
+
+    with tempfile.NamedTemporaryFile(suffix='.wav') as fp:
+        fp.write(raw_data)
+        fp.seek(0)
+        transcript = subprocess.run(
+            "%s --audio %s" % (cmdline, fp.name), 
+            shell=True, capture_output=True).stdout
+        transcript = transcript.decode('utf-8')
+
+    return transcript, {}
