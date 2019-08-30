@@ -195,7 +195,7 @@ def transcribe(speech_filepath, asr_system, settings, save_transcription=True):
             transcription,transcription_json = recognize_amazon(audio, bot_name, bot_alias, user_id,
                      content_type="audio/l16; rate=16000; channels=1", access_key_id=settings.get('credentials','amazon_access_key_id'),
                      secret_access_key=settings.get('credentials','amazon_secret_access_key'), region=settings.get('credentials','amazon_region'))
-                transcription_json['audioStream'] = ''
+            transcription_json['audioStream'] = ''
         except sr.UnknownValueError:
             print("Amazon not process the speech transcription request")
 
