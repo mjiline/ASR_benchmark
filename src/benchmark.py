@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 '''
 Use settings.ini to configure the benchmark.
 '''
@@ -11,6 +12,7 @@ import time
 import collections
 import shutil
 import codecs
+import pandas as pd
 
 def main():
 
@@ -19,6 +21,7 @@ def main():
     settings_filepath = 'settings.ini'
     settings.read(settings_filepath)
 
+    exp_name = settings.get('general','exp_name')
     asr_systems = settings.get('general','asr_systems').split(',')
     data_folders = settings.get('general','data_folders').split(',')
     supported_speech_file_types = sorted(['flac', 'mp3', 'ogg', 'wav'])
@@ -88,6 +91,8 @@ def main():
 
         if settings.getboolean('general','evaluate_transcriptions'):
             # Evaluate transcriptions
+            df = pd.DataFrame(columns =['file', 'gold', 'len', 'service', 'transcript', 'wer', 'changes', 'corrects', 'subs', 'ins', 'dels'])
+            df = df.astype(dtype= {'len': 'int', 'wer': 'float', 'changes': 'int', 'corrects': 'int', 'subs': 'int', 'ins': 'int', 'dels': 'int'})
             all_texts = {}
             print('\n### Final evaluation of all the ASR engines based on their predicted jurisdictions')
 
@@ -104,7 +109,7 @@ def main():
                 number_of_missing_predicted_transcription_txt_files = 0
                 edit_types = ['corrects', 'deletions', 'insertions', 'substitutions', 'changes']
                 number_of_edits = {}
-
+                
                 for edit_type in edit_types:
                     number_of_edits[edit_type] = 0
 
@@ -136,9 +141,15 @@ def main():
 
                     #if len(predicted_transcription) == 0: continue
 
-                    number_of_tokens_in_gold += len(gold_transcription.split(' '))
+                    number_of_tokens_in_gold_this_sentence = len(gold_transcription.split(' '))
+                    number_of_tokens_in_gold += number_of_tokens_in_gold_this_sentence
                     for edit_type in edit_types:
                         number_of_edits[edit_type] += wer[edit_type]
+                    stats = {
+                        'file': speech_filepath, 'gold': gold_transcription, 'len': number_of_tokens_in_gold_this_sentence, 'service': asr_system, 'transcript': predicted_transcription, 
+                        'wer': wer['changes']/number_of_tokens_in_gold_this_sentence, 'changes': wer['changes'], 'corrects': wer['corrects'], 'subs': wer['substitutions'], 'ins': wer['insertions'], 'dels': wer['deletions']
+                    }
+                    df = df.append(stats, ignore_index=True)
 
                 all_predicted_transcription_file.close()
                 all_gold_transcription_filepath.close()
@@ -151,6 +162,7 @@ def main():
                 print('Number of speech files: {0}'.format(len(speech_filepaths)))
                 print('Number of missing predicted prescription files: {0}'.format(number_of_missing_predicted_transcription_txt_files))
                 print('Number of empty predicted prescription files: {0}'.format(number_of_empty_predicted_transcription_txt_files))
+            df.to_csv(exp_name+'_summary.csv')
 
 
 if __name__ == "__main__":
