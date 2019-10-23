@@ -50,7 +50,10 @@ def transcribe(speech_filepath, asr_system, settings, save_transcription=True):
             # for testing purposes, we're just using the default API key
             # to use another API key, use `r.recognize_google(audio, key="GOOGLE_SPEECH_RECOGNITION_API_KEY")`
             # instead of `r.recognize_google(audio)`
-            response = r.recognize_google(audio, show_all=True, language=speech_language)
+            kwargs = {}
+            google_api_key = settings.get('general','google_api_key')
+            if google_api_key != "" : kwargs['key'] = google_api_key
+            response = r.recognize_google(audio, show_all=True, language=speech_language, kwargs)
             transcription_json = response
 
             actual_result = response
