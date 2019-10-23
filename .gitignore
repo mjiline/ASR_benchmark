@@ -1,7 +1,7 @@
 # Misc
 .pydevproject
 *.project
-data/*
+data/**
 !data/example_dataset_en
 *__pycache__*
 .README.md.html
