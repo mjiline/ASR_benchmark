@@ -20,20 +20,21 @@ def transcribe(speech_filepath, asr_system, settings, save_transcription=True):
     transcription_filepath_text = transcription_filepath_base  + '.txt'
     transcription_filepath_json = transcription_filepath_base  + '.json'
 
-    # If there already exists a transcription file,  we may skip it depending on the user settings.
-    if os.path.isfile(transcription_filepath_text):
-        existing_transcription = codecs.open(transcription_filepath_text, 'r', settings.get('general','predicted_transcription_encoding')).read()
-        is_transcription_file_empty = len(existing_transcription.strip()) == 0
-        if not is_transcription_file_empty and not settings.getboolean('general','overwrite_non_empty_transcriptions'):
-            print('Skipped speech file {0} because the file {1} already exists and is not empty.'.format(speech_filepath,transcription_filepath_text))
-            print('Change the setting `overwrite_non_empty_transcriptions` to True if you want to overwrite existing transcriptions')
-            transcription_skipped = True
-            return existing_transcription, transcription_skipped
-        if is_transcription_file_empty and not settings.getboolean('general','overwrite_empty_transcriptions'):
-            print('Skipped speech file {0} because the file {1} already exists and is empty.'.format(speech_filepath,transcription_filepath_text))
-            print('Change the setting `overwrite_empty_transcriptions` to True if you want to overwrite existing transcriptions')
-            transcription_skipped = True
-            return existing_transcription, transcription_skipped
+    # If there already exists a transcription file,  we may skip it depending on the user settings.  
+    if asr_system != 'deepspeech': # always redo deepspeech files
+        if os.path.isfile(transcription_filepath_text):
+            existing_transcription = codecs.open(transcription_filepath_text, 'r', settings.get('general','predicted_transcription_encoding')).read()
+            is_transcription_file_empty = len(existing_transcription.strip()) == 0
+            if not is_transcription_file_empty and not settings.getboolean('general','overwrite_non_empty_transcriptions'):
+                print('Skipped speech file {0} because the file {1} already exists and is not empty.'.format(speech_filepath,transcription_filepath_text))
+                print('Change the setting `overwrite_non_empty_transcriptions` to True if you want to overwrite existing transcriptions')
+                transcription_skipped = True
+                return existing_transcription, transcription_skipped
+            if is_transcription_file_empty and not settings.getboolean('general','overwrite_empty_transcriptions'):
+                print('Skipped speech file {0} because the file {1} already exists and is empty.'.format(speech_filepath,transcription_filepath_text))
+                print('Change the setting `overwrite_empty_transcriptions` to True if you want to overwrite existing transcriptions')
+                transcription_skipped = True
+                return existing_transcription, transcription_skipped
 
     # use the audio file as the audio source
     r = sr.Recognizer()
@@ -51,9 +52,9 @@ def transcribe(speech_filepath, asr_system, settings, save_transcription=True):
             # to use another API key, use `r.recognize_google(audio, key="GOOGLE_SPEECH_RECOGNITION_API_KEY")`
             # instead of `r.recognize_google(audio)`
             kwargs = {}
-            google_api_key = settings.get('general','google_api_key')
+            google_api_key = "" #settings.get('general','google_api_key')
             if google_api_key != "" : kwargs['key'] = google_api_key
-            response = r.recognize_google(audio, show_all=True, language=speech_language, kwargs)
+            response = r.recognize_google(audio, show_all=True, language=speech_language, **kwargs)
             transcription_json = response
 
             actual_result = response
@@ -292,6 +293,7 @@ def recognize_deepspeech(audio_data, cmdline):
     try:
         import tempfile
         import subprocess
+        from subprocess import PIPE
     except ImportError:
         raise sr.RequestError("missing tempfile module")
 
@@ -303,8 +305,7 @@ def recognize_deepspeech(audio_data, cmdline):
         fp.write(raw_data)
         fp.seek(0)
         transcript = subprocess.run(
-            "%s --audio %s" % (cmdline, fp.name), 
-            shell=True, capture_output=True).stdout
+            "%s --audio %s" % (cmdline, fp.name), shell=True, stdout=PIPE, stderr=PIPE).stdout
         transcript = transcript.decode('utf-8')
 
     return transcript, {}
