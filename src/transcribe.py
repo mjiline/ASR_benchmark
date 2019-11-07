@@ -26,8 +26,8 @@ def transcribe(speech_filepath, asr_system, settings, save_transcription=True):
             existing_transcription = codecs.open(transcription_filepath_text, 'r', settings.get('general','predicted_transcription_encoding')).read()
             is_transcription_file_empty = len(existing_transcription.strip()) == 0
             if not is_transcription_file_empty and not settings.getboolean('general','overwrite_non_empty_transcriptions'):
-                print('Skipped speech file {0} because the file {1} already exists and is not empty.'.format(speech_filepath,transcription_filepath_text))
-                print('Change the setting `overwrite_non_empty_transcriptions` to True if you want to overwrite existing transcriptions')
+                #print('Skipped speech file {0} because the file {1} already exists and is not empty.'.format(speech_filepath,transcription_filepath_text))
+                #print('Change the setting `overwrite_non_empty_transcriptions` to True if you want to overwrite existing transcriptions')
                 transcription_skipped = True
                 return existing_transcription, transcription_skipped
             if is_transcription_file_empty and not settings.getboolean('general','overwrite_empty_transcriptions'):
@@ -305,7 +305,7 @@ def recognize_deepspeech(audio_data, cmdline):
         fp.write(raw_data)
         fp.seek(0)
         transcript = subprocess.run(
-            "%s --audio %s" % (cmdline, fp.name), shell=True, stdout=PIPE, stderr=PIPE).stdout
+            "exec %s --audio %s" % (cmdline, fp.name), shell=True, stdout=PIPE, stderr=PIPE).stdout
         transcript = transcript.decode('utf-8')
 
     return transcript, {}
