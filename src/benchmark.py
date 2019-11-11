@@ -57,6 +57,9 @@ def main():
 
         speech_filepaths = sorted(glob.glob(os.path.join(data_folder, '*.{0}'.format(speech_file_type))))
 
+        if settings.getint('general','max_data_files') > 0:
+            speech_filepaths = speech_filepaths[0:settings.getint('general','max_data_files')]
+
         if settings.getboolean('general','transcribe'):
 
             # Make sure there are files to transcribe
