@@ -26,6 +26,7 @@ def main():
     asr_systems = settings.get('general','asr_systems').split(',')
     data_folders = settings.get('general','data_folders').split(',')
     supported_speech_file_types = sorted(['flac', 'mp3', 'ogg', 'wav'])
+    asr_systems = [s.strip() for s in asr_systems]
 
     print('asr_systems: {0}'.format(asr_systems))
     print('data_folders: {0}'.format(data_folders))
