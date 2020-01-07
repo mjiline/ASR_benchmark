@@ -96,6 +96,14 @@ def transcribe(speech_filepath, asr_system, settings, save_transcription=True):
             print("Could not request results from Google Cloud Speech service; {0}".format(e))
             asr_could_not_be_reached = True
 
+    elif asr_system == 'googlecloudlive':
+        try:
+            transcription, transcription_json = recognize_googlecloud_live(audio)
+        except:
+            print('Google Cloud LIVE encountered some issue')
+            asr_could_not_be_reached = True
+
+
     # recognize speech using Wit.ai
     elif asr_system == 'wit':
         WIT_AI_KEY = settings.get('credentials','wit_ai_key')
@@ -238,7 +246,6 @@ def transcribe(speech_filepath, asr_system, settings, save_transcription=True):
     return transcription, transcription_skipped
 
 
-
 def recognize_amazon(audio_data, bot_name, bot_alias, user_id,
                      content_type="audio/l16; rate=16000; channels=1", access_key_id=None, secret_access_key=None, region=None):
     """
@@ -282,7 +289,6 @@ def recognize_amazon(audio_data, bot_name, bot_alias, user_id,
     return response["inputTranscript"], response
 
 
-
 def recognize_deepspeech(audio_data, cmdline):
     """
     Author: Misha Jiline (https://github.com/mjiline)
@@ -309,3 +315,13 @@ def recognize_deepspeech(audio_data, cmdline):
         transcript = transcript.decode('utf-8')
 
     return transcript, {}
+
+
+def recognize_googlecloud_live(audio_data):
+    # recognize speech using Google Cloud Speech
+    #GOOGLE_CLOUD_SPEECH_CREDENTIALS_filepath = settings.get('credentials','google_cloud_speech_credentials_filepath')
+    #GOOGLE_CLOUD_SPEECH_CREDENTIALS = codecs.open(GOOGLE_CLOUD_SPEECH_CREDENTIALS_filepath, 'r', 'UTF-8').read()
+    import transcribe_googlecloudlive as googlelive
+    transcript, transcription_json = googlelive.transcribe_streaming_from_data(audio_data.get_raw_data(), verbose=False)
+
+    return transcript, transcription_json
