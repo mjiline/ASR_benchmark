@@ -21,7 +21,7 @@ def getSignatureKey(key, dateStamp, regionName, serviceName):
     kSigning = sign(kService, 'aws4_request')
     return kSigning
 
-def create_request_url(region="us-east-1", access_key=None, secret_key=None):
+def create_request_url(region="us-east-1", access_key=None, secret_key=None, debug=False):
     assert access_key != None and secret_key != None
 
     method = "GET"
@@ -41,7 +41,6 @@ def create_request_url(region="us-east-1", access_key=None, secret_key=None):
     canonical_querystring += "&X-Amz-Credential=" + urllib.parse.quote_plus(access_key + "/" + credential_scope)
     canonical_querystring += "&X-Amz-Date=" + amz_date 
     canonical_querystring += "&X-Amz-Expires=300"
-    #canonical_querystring += "&X-Amz-Security-Token=" + token
     canonical_querystring += "&X-Amz-SignedHeaders=" + signed_headers
     canonical_querystring += "&language-code=en-US&media-encoding=pcm&sample-rate=16000"
 
@@ -54,14 +53,14 @@ def create_request_url(region="us-east-1", access_key=None, secret_key=None):
     canonical_request += signed_headers + '\n' 
     canonical_request += payload_hash
 
-    print("\ncanonical_request:\n%s\n" % canonical_request)
+    if debug: print("\ncanonical_request:\n%s\n" % canonical_request)
 
     string_to_sign = algorithm + "\n"
     string_to_sign += amz_date + "\n"
     string_to_sign += credential_scope + "\n"
     string_to_sign += HashSHA256(canonical_request)
 
-    print("\nString-to-Sign:\n%s\n" % string_to_sign)
+    if debug: print("\nstring_to_sign:\n%s\n" % string_to_sign)
 
     signing_key = getSignatureKey(secret_key, datestamp, region, service)
     signature = hmac.new(signing_key, (string_to_sign).encode('utf-8'), hashlib.sha256).hexdigest()
@@ -71,20 +70,22 @@ def create_request_url(region="us-east-1", access_key=None, secret_key=None):
 
     return request_url
 
+def wrap_audio_chunk(chunk):
+    x = b''
+    x += b'\x0D' + bytes(':content-type', 'utf-8') + b'\x07\x00\x18' + bytes('application/octet-stream', 'utf-8')
+    x += b'\x0B' + bytes(':event-type', 'utf-8')   + b'\x07\x00\x0A' + bytes('AudioEvent', 'utf-8')
+    x += b'\x0D' + bytes(':message-type', 'utf-8') + b'\x07\x00\x05' + bytes('event', 'utf-8')
+    x += chunk
+    return x
+
 
 def delay_generator(content, delay_ms=0):
     for chunk in content:
         yield chunk
         time.sleep(delay_ms/1000)
 
-def transcribe_streaming_from_file(stream_file, verbose=True, **kwargs):
-    """Streams transcription of the given audio file."""
-    with io.open(stream_file, 'rb') as audio_file:
-        content = audio_file.read()
 
-    return transcribe_streaming_from_data(content, verbose, **kwargs)
-
-async def handle_stream(url, data, ws_debug=False):
+async def handle_stream(url, data, ws_debug=True):
     if ws_debug:
         import logging
         logger = logging.getLogger('websockets')
@@ -94,16 +95,38 @@ async def handle_stream(url, data, ws_debug=False):
     ws_url = url.replace('https://', 'wss://')
     print('ws_url: %s' % ws_url)
     async with websockets.connect(ws_url) as websocket:
-        greeting = await websocket.recv()
-        print("greeting: %s" % greeting)
+        async def handle_stream_reader():
+            greeting = await websocket.recv()
+            print("greeting: %s" % greeting)
+
+        loop = asyncio.get_event_loop()
+        read_task = loop.create_task(handle_stream_reader())
+
+        for chunk in data:
+            print("Chunk len: %d", len(chunk))
+            await websocket.send(wrap_audio_chunk(chunk))
+        print("Sending empty chunk")
+        await websocket.send(wrap_audio_chunk(b''))
+        await read_task
+ 
+
 
 def streaming_recognize(url, data):
     results = []
     asyncio.get_event_loop().run_until_complete(handle_stream(url, data))
     return results
 
+
+def transcribe_streaming_from_file(stream_file, verbose=True, **kwargs):
+    """Streams transcription of the given audio file."""
+    with io.open(stream_file, 'rb') as audio_file:
+        content = audio_file.read()
+
+    return transcribe_streaming_from_data(content, verbose=verbose, **kwargs)
+
+
 def transcribe_streaming_from_data(content, 
-        chunk_size=4*1024, sample_rate_hertz=16000, audio_sample_size=2, realtime=False, verbose=True,
+        chunk_size=8*1024, sample_rate_hertz=16000, audio_sample_size=2, realtime=False, verbose=True,
         access_key=None, secret_key=None):
 
     assert audio_sample_size==2
@@ -116,8 +139,7 @@ def transcribe_streaming_from_data(content,
     else:
         stream = [content]
 
-    requests = (types.StreamingRecognizeRequest(audio_content=chunk)
-                for chunk in stream)
+    requests = (chunk for chunk in stream)
 
     # streaming_recognize returns a generator.
     delay_ms = 0
@@ -161,4 +183,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
     access_key = os.environ['AWS_ACCESS_KEY_ID']
     secret_key = os.environ['AWS_SECRET_ACCESS_KEY']
-    transcribe_streaming_from_file(args.stream, access_key=access_key, secret_key=secret_key, verbose=True)
+    transcribe_streaming_from_file(args.stream, access_key=access_key, secret_key=secret_key, verbose=True, realtime=True)
