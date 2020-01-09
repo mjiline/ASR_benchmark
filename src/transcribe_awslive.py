@@ -97,7 +97,6 @@ def unwrap_response(response_bin):
     return json.loads(json_bin)
 
 
-
 def delay_generator(content, delay_ms=0):
     for chunk in content:
         yield chunk
@@ -105,19 +104,28 @@ def delay_generator(content, delay_ms=0):
 
 
 async def handle_stream_reader(websocket, debug=True):
-    rx_complete_messages = {'messages': []}
+    start_time = time.time()
+    all_responses = []
     try:
         while True:
-            rx_message = await websocket.recv()
-            rx_message = unwrap_response(rx_message) 
-            results = rx_message['Transcript']['Results']
-            for r in results: 
-                if not r['IsPartial'] :
-                    rx_complete_messages['messages'].append(r)
-            if debug: print("Received: %s" % rx_message)
+            response = await websocket.recv()
+            response = unwrap_response(response) 
+            latency = time.time() - start_time
+            response['latency'] = latency
+            if debug: print("Received response latency: %f" % response['latency'])
+            all_responses.append(response)
     except websockets.exceptions.ConnectionClosedOK:
-        return rx_complete_messages
+        return all_responses
 
+
+async def handle_stream_sender(websocket, data, debug=True):
+        for chunk in data:
+            if debug: print("Chunk len: %d" % len(chunk))
+            await websocket.send(wrap_audio_chunk(chunk))
+            await asyncio.sleep(0.001)
+
+        if debug: print("Sending empty chunk")
+        await websocket.send(wrap_audio_chunk(b''))
 
 async def handle_stream(url, data, ws_debug=False, debug=True):
     if ws_debug:
@@ -131,22 +139,14 @@ async def handle_stream(url, data, ws_debug=False, debug=True):
     async with websockets.connect(ws_url) as websocket:
         loop = asyncio.get_event_loop()
         read_task = loop.create_task(handle_stream_reader(websocket))
-
-        for chunk in data:
-            if debug: print("Chunk len: %d" % len(chunk))
-            await websocket.send(wrap_audio_chunk(chunk))
-        if debug: print("Sending empty chunk")
-        await websocket.send(wrap_audio_chunk(b''))
-
-        transcription_json = await read_task
-        print("transcription_json: %s" % transcription_json)
-
- 
+        send_task = loop.create_task(handle_stream_sender(websocket, data))
+        all_results = await read_task
+        return all_results
 
 
 def streaming_recognize(url, data):
     results = []
-    asyncio.get_event_loop().run_until_complete(handle_stream(url, data))
+    results = asyncio.get_event_loop().run_until_complete(handle_stream(url, data))
     return results
 
 
@@ -155,6 +155,7 @@ def transcribe_streaming_from_file(stream_file, verbose=True, **kwargs):
     with io.open(stream_file, 'rb') as audio_file:
         content = audio_file.read()
 
+    content = content+content+content
     return transcribe_streaming_from_data(content, verbose=verbose, **kwargs)
 
 
@@ -180,31 +181,20 @@ def transcribe_streaming_from_data(content,
         delay_ms = 1000 / (sample_rate_hertz * audio_sample_size / chunk_size)
         requests = delay_generator(requests, delay_ms=delay_ms)
 
-    
     ### responses = client.streaming_recognize(streaming_config, delay_generator(requests, delay_ms=delay_ms) )
     url = create_request_url(access_key=access_key, secret_key=secret_key)
     responses = streaming_recognize(url, requests)
 
     transcript = ""
     for response in responses:
-        # Once the transcription has settled, the first result will contain the
-        # is_final result. The other results will be for subsequent portions of
-        # the audio.
-        for result in response.results:
+        for result in response['Transcript']['Results']:
             if verbose:
-                print('Finished: {}'.format(result.is_final))
-                print('Stability: {}'.format(result.stability))
-            
-            # The alternatives are ordered from most likely to least.
-            alternatives = result.alternatives
-            if result.is_final: 
-                transcript += alternatives[0].transcript.strip() + " "
-
-            for alternative in alternatives:
-                if verbose:
-                    print('Confidence: {}'.format(alternative.confidence))
-                    print(u'Transcript: {}'.format(alternative.transcript))
-    return transcript, {}
+                print('IsPartial: {}'.format(result['IsPartial']))
+                print('EndTime: {}'.format(result['EndTime']))
+            if not result['IsPartial']: 
+                transcipt_alternative = result['Alternatives'][0]
+                transcript += transcipt_alternative['Transcript'].strip() + " "
+    return transcript, responses
 
 
 
@@ -216,4 +206,5 @@ if __name__ == '__main__':
     args = parser.parse_args()
     access_key = os.environ['AWS_ACCESS_KEY_ID']
     secret_key = os.environ['AWS_SECRET_ACCESS_KEY']
-    transcribe_streaming_from_file(args.stream, access_key=access_key, secret_key=secret_key, verbose=True, realtime=True)
+    transcript, responses = transcribe_streaming_from_file(args.stream, access_key=access_key, secret_key=secret_key, verbose=True, realtime=True)
+    print(transcript)
