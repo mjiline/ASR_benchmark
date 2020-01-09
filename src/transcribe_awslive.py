@@ -12,8 +12,10 @@ import json
 def HashSHA256(s):
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
+
 def sign(key, msg):
     return hmac.new(key, msg.encode('utf-8'), hashlib.sha256).digest()
+
 
 def getSignatureKey(key, dateStamp, regionName, serviceName):
     kDate = sign(('AWS4' + key).encode('utf-8'), dateStamp)
@@ -21,6 +23,7 @@ def getSignatureKey(key, dateStamp, regionName, serviceName):
     kService = sign(kRegion, serviceName)
     kSigning = sign(kService, 'aws4_request')
     return kSigning
+
 
 def create_request_url(region="us-east-1", access_key=None, secret_key=None, debug=False):
     assert access_key != None and secret_key != None
@@ -71,6 +74,7 @@ def create_request_url(region="us-east-1", access_key=None, secret_key=None, deb
 
     return request_url
 
+
 def wrap_audio_chunk(chunk):
     headers = b''
     headers += pack('!B13sBH24s', 13,  bytes(':content-type', 'utf-8'), 7, 24, bytes('application/octet-stream', 'utf-8'))
@@ -91,6 +95,7 @@ def wrap_audio_chunk(chunk):
 
     return message_complete
 
+
 def unwrap_response(response_bin):
     header_len = unpack_from("!I", response_bin, 4)[0]
     json_bin = response_bin[3*4+header_len:-4]
@@ -103,7 +108,7 @@ def delay_generator(content, delay_ms=0):
         time.sleep(delay_ms/1000)
 
 
-async def handle_stream_reader(websocket, debug=True):
+async def handle_stream_reader(websocket, debug=False):
     start_time = time.time()
     all_responses = []
     try:
@@ -118,7 +123,7 @@ async def handle_stream_reader(websocket, debug=True):
         return all_responses
 
 
-async def handle_stream_sender(websocket, data, debug=True):
+async def handle_stream_sender(websocket, data, debug=False):
         for chunk in data:
             if debug: print("Chunk len: %d" % len(chunk))
             await websocket.send(wrap_audio_chunk(chunk))
@@ -127,7 +132,8 @@ async def handle_stream_sender(websocket, data, debug=True):
         if debug: print("Sending empty chunk")
         await websocket.send(wrap_audio_chunk(b''))
 
-async def handle_stream(url, data, ws_debug=False, debug=True):
+
+async def handle_stream(url, data, ws_debug=False, debug=False):
     if ws_debug:
         import logging
         logger = logging.getLogger('websockets')
@@ -150,17 +156,17 @@ def streaming_recognize(url, data):
     return results
 
 
-def transcribe_streaming_from_file(stream_file, verbose=True, **kwargs):
+def transcribe_streaming_from_file(stream_file, verbose=False, **kwargs):
     """Streams transcription of the given audio file."""
     with io.open(stream_file, 'rb') as audio_file:
         content = audio_file.read()
 
-    content = content+content+content
+    content = content + content + content
     return transcribe_streaming_from_data(content, verbose=verbose, **kwargs)
 
 
 def transcribe_streaming_from_data(content, 
-        chunk_size=8*1024, sample_rate_hertz=16000, audio_sample_size=2, realtime=False, verbose=True,
+        chunk_size=8*1024, sample_rate_hertz=16000, audio_sample_size=2, realtime=False, verbose=False,
         access_key=None, secret_key=None):
 
     assert audio_sample_size==2
@@ -186,7 +192,13 @@ def transcribe_streaming_from_data(content,
     responses = streaming_recognize(url, requests)
 
     transcript = ""
+    first_latency = -1
     for response in responses:
+        if len(response['Transcript']['Results']) > 0 :
+            if verbose: print('result latency: %f' % response['latency']) 
+            if first_latency < 0 :
+                first_latency = response['latency']
+
         for result in response['Transcript']['Results']:
             if verbose:
                 print('IsPartial: {}'.format(result['IsPartial']))
@@ -194,8 +206,10 @@ def transcribe_streaming_from_data(content,
             if not result['IsPartial']: 
                 transcipt_alternative = result['Alternatives'][0]
                 transcript += transcipt_alternative['Transcript'].strip() + " "
-    return transcript, responses
 
+    if verbose:  print('first_latency: %f' % first_latency) 
+    transcript_json = {'first_latency': first_latency, 'responses':responses}
+    return transcript, transcript_json
 
 
 if __name__ == '__main__':
@@ -206,5 +220,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
     access_key = os.environ['AWS_ACCESS_KEY_ID']
     secret_key = os.environ['AWS_SECRET_ACCESS_KEY']
-    transcript, responses = transcribe_streaming_from_file(args.stream, access_key=access_key, secret_key=secret_key, verbose=True, realtime=True)
+    transcript, transcript_json = transcribe_streaming_from_file(args.stream, access_key=access_key, secret_key=secret_key, verbose=True, realtime=True)
+    print(transcript_json)
     print(transcript)
