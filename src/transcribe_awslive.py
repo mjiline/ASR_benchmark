@@ -4,8 +4,9 @@ import io, os, argparse
 import boto3
 import websockets, asyncio
 import datetime, time
-import hashlib, hmac, base64, urllib.parse
-
+import hashlib, hmac, base64, urllib.parse, binascii
+from struct import pack, unpack_from 
+import json
 
 
 def HashSHA256(s):
@@ -71,12 +72,30 @@ def create_request_url(region="us-east-1", access_key=None, secret_key=None, deb
     return request_url
 
 def wrap_audio_chunk(chunk):
-    x = b''
-    x += b'\x0D' + bytes(':content-type', 'utf-8') + b'\x07\x00\x18' + bytes('application/octet-stream', 'utf-8')
-    x += b'\x0B' + bytes(':event-type', 'utf-8')   + b'\x07\x00\x0A' + bytes('AudioEvent', 'utf-8')
-    x += b'\x0D' + bytes(':message-type', 'utf-8') + b'\x07\x00\x05' + bytes('event', 'utf-8')
-    x += chunk
-    return x
+    headers = b''
+    headers += pack('!B13sBH24s', 13,  bytes(':content-type', 'utf-8'), 7, 24, bytes('application/octet-stream', 'utf-8'))
+    headers += pack('!B11sBH10s', 11,  bytes(':event-type', 'utf-8'), 7, 10, bytes('AudioEvent', 'utf-8'))
+    headers += pack('!B13sBH5s',  13,  bytes(':message-type', 'utf-8'), 7, 5, bytes('event', 'utf-8'))
+
+    headers_len = len(headers)
+    audio_len = len(chunk)
+    others_len = 3*4 + 4 
+    total_len = others_len + headers_len + audio_len
+
+    prelude = pack('!II', total_len, headers_len)
+    prelude_crc = pack('!I', binascii.crc32(prelude))
+
+    message = prelude + prelude_crc + headers + chunk
+    message_crc = pack('!I', binascii.crc32(message))
+    message_complete = message + message_crc
+
+    return message_complete
+
+def unwrap_response(response_bin):
+    header_len = unpack_from("!I", response_bin, 4)[0]
+    json_bin = response_bin[3*4+header_len:-4]
+    return json.loads(json_bin)
+
 
 
 def delay_generator(content, delay_ms=0):
@@ -85,7 +104,22 @@ def delay_generator(content, delay_ms=0):
         time.sleep(delay_ms/1000)
 
 
-async def handle_stream(url, data, ws_debug=True):
+async def handle_stream_reader(websocket, debug=True):
+    rx_complete_messages = {'messages': []}
+    try:
+        while True:
+            rx_message = await websocket.recv()
+            rx_message = unwrap_response(rx_message) 
+            results = rx_message['Transcript']['Results']
+            for r in results: 
+                if not r['IsPartial'] :
+                    rx_complete_messages['messages'].append(r)
+            if debug: print("Received: %s" % rx_message)
+    except websockets.exceptions.ConnectionClosedOK:
+        return rx_complete_messages
+
+
+async def handle_stream(url, data, ws_debug=False, debug=True):
     if ws_debug:
         import logging
         logger = logging.getLogger('websockets')
@@ -93,21 +127,20 @@ async def handle_stream(url, data, ws_debug=True):
         logger.addHandler(logging.StreamHandler())
 
     ws_url = url.replace('https://', 'wss://')
-    print('ws_url: %s' % ws_url)
+    if debug: print('ws_url: %s' % ws_url)
     async with websockets.connect(ws_url) as websocket:
-        async def handle_stream_reader():
-            greeting = await websocket.recv()
-            print("greeting: %s" % greeting)
-
         loop = asyncio.get_event_loop()
-        read_task = loop.create_task(handle_stream_reader())
+        read_task = loop.create_task(handle_stream_reader(websocket))
 
         for chunk in data:
-            print("Chunk len: %d", len(chunk))
+            if debug: print("Chunk len: %d" % len(chunk))
             await websocket.send(wrap_audio_chunk(chunk))
-        print("Sending empty chunk")
+        if debug: print("Sending empty chunk")
         await websocket.send(wrap_audio_chunk(b''))
-        await read_task
+
+        transcription_json = await read_task
+        print("transcription_json: %s" % transcription_json)
+
  
 
 
