@@ -161,7 +161,7 @@ def transcribe_streaming_from_file(stream_file, verbose=False, **kwargs):
     with io.open(stream_file, 'rb') as audio_file:
         content = audio_file.read()
 
-    content = content + content + content
+    content = content
     return transcribe_streaming_from_data(content, verbose=verbose, **kwargs)
 
 

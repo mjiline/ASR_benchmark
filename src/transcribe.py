@@ -103,6 +103,17 @@ def transcribe(speech_filepath, asr_system, settings, save_transcription=True):
             print('Google Cloud LIVE encountered some issue')
             asr_could_not_be_reached = True
 
+    elif asr_system == 'awslive':
+        try:
+            transcription, transcription_json = recognize_aws_live(audio, 
+                access_key=settings.get('credentials','amazon_access_key_id'),
+                secret_key=settings.get('credentials','amazon_secret_access_key'))
+        except Exception as exc:
+            print('Google Cloud LIVE encountered some issue')
+            asr_could_not_be_reached = True            
+        except:
+            print('Google Cloud LIVE encountered some issue')
+            asr_could_not_be_reached = True
 
     # recognize speech using Wit.ai
     elif asr_system == 'wit':
@@ -322,6 +333,17 @@ def recognize_googlecloud_live(audio_data):
     #GOOGLE_CLOUD_SPEECH_CREDENTIALS_filepath = settings.get('credentials','google_cloud_speech_credentials_filepath')
     #GOOGLE_CLOUD_SPEECH_CREDENTIALS = codecs.open(GOOGLE_CLOUD_SPEECH_CREDENTIALS_filepath, 'r', 'UTF-8').read()
     import transcribe_googlecloudlive as googlelive
-    transcript, transcription_json = googlelive.transcribe_streaming_from_data(audio_data.get_raw_data(), verbose=False)
+    transcript, transcription_json = googlelive.transcribe_streaming_from_data(
+        audio_data.get_raw_data(), 
+        verbose=False)
+
+    return transcript, transcription_json
+
+def recognize_aws_live(audio_data, **kwargs):
+    # recognize speech using Google Cloud Speech
+    import transcribe_awslive as awslive
+    transcript, transcription_json = awslive.transcribe_streaming_from_data(
+        audio_data.get_raw_data(), 
+        realtime=True, verbose=False, **kwargs)
 
     return transcript, transcription_json
