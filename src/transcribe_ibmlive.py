@@ -1,62 +1,96 @@
 #!/usr/bin/env python
 
 import io, os, argparse
-import boto3
-import websockets, asyncio
 import datetime, time
-import hashlib, hmac, base64, urllib.parse, binascii
-from struct import pack, unpack_from 
 import json
 from transcribe_utils import delay_generator
 
+from ibm_watson import SpeechToTextV1
+from ibm_watson.websocket import RecognizeCallback, AudioSource
+from threading import Thread
+from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
 
-async def handle_stream(audio_data, username=None, password=None, language="en-US", show_all=False):
+try:
+    from Queue import Queue, Full
+except ImportError:
+    from queue import Queue, Full
 
-        assert isinstance(audio_data, AudioData), "Data must be audio data"
-        assert isinstance(username, str), "``username`` must be a string"
-        assert isinstance(password, str), "``password`` must be a string"
+class IbmLiveRecognizeCallback(RecognizeCallback):
+    messages = []
+    start_time = 0
+    debug = False
+    def __init__(self, debug=False):
+        RecognizeCallback.__init__(self)
+        self.debug = debug
+    
+    def on_data(self, data):
+        if self.debug : print("data: %s" % data)
+        data = data.copy()
+        data['latency'] = time.time() - self.start_time
+        self.messages.append(data)
 
-        flac_data = audio_data.get_flac_data(
-            convert_rate=None if audio_data.sample_rate >= 16000 else 16000,  # audio samples should be at least 16 kHz
-            convert_width=None if audio_data.sample_width >= 2 else 2  # audio samples should be at least 16-bit
-        )
-        url = "https://stream.watsonplatform.net/speech-to-text/api/v1/recognize?{}".format(urlencode({
-            "profanity_filter": "false",
-            "model": "{}_BroadbandModel".format(language),
-            "inactivity_timeout": -1,  # don't stop recognizing when the audio stream activity stops
-        }))
-        request = Request(url, data=flac_data, headers={
-            "Content-Type": "audio/x-flac",
-            "X-Watson-Learning-Opt-Out": "true",  # prevent requests from being logged, for improved privacy
-        })
-        authorization_value = base64.standard_b64encode("{}:{}".format(username, password).encode("utf-8")).decode("utf-8")
-        request.add_header("Authorization", "Basic {}".format(authorization_value))
-        try:
-            response = urlopen(request, timeout=self.operation_timeout)
-        except HTTPError as e:
-            raise RequestError("recognition request failed: {}".format(e.reason))
-        except URLError as e:
-            raise RequestError("recognition connection failed: {}".format(e.reason))
-        response_text = response.read().decode("utf-8")
-        result = json.loads(response_text)
+    def on_transcription(self, transcript):
+        if self.debug : print('transcript: %s' % transcript)
 
-        # return results
-        if show_all: return result
-        if "results" not in result or len(result["results"]) < 1 or "alternatives" not in result["results"][0]:
-            raise UnknownValueError()
+    def on_connected(self):
+        if self.debug: print('Connection was successful')
+        assert self.start_time <= 0
+        self.start_time = time.time()
 
-        transcription = []
-        for utterance in result["results"]:
-            if "alternatives" not in utterance: raise UnknownValueError()
-            for hypothesis in utterance["alternatives"]:
-                if "transcript" in hypothesis:
-                    transcription.append(hypothesis["transcript"])
-        return "\n".join(transcription)
+    def on_error(self, error):
+        if self.debug: print('Error received: {}'.format(error))
+        assert True
+
+    def on_inactivity_timeout(self, error):
+        if self.debug: print('Inactivity timeout: {}'.format(error))
+        assert True
+
+    def on_listening(self):
+        if self.debug: print('Service is listening')
+
+    def on_hypothesis(self, hypothesis):
+        if self.debug: print("hypothesis: %s" % hypothesis)
+
+    def on_close(self):
+        if self.debug: print("Connection closed")
+
+def recognize_thread_proc(speech_to_text_engine=None, **kwargs):
+    speech_to_text_engine.recognize_using_websocket(
+        content_type='audio/l16; rate=16000',
+        interim_results=True,
+        max_alternatives=1,
+        **kwargs)
+
+def streaming_recognize(data, password=None, audio_maxsize=1024*1024):
+    authenticator = IAMAuthenticator(password)
+    speech_to_text_engine = SpeechToTextV1(authenticator=authenticator)
+
+    audio_queue = Queue(maxsize=audio_maxsize)
+    audio_source = AudioSource(audio_queue, True, True)
+    mycallback = IbmLiveRecognizeCallback(debug=True)
+
+    try:
+        recognize_thread = Thread(
+            target=recognize_thread_proc, 
+            kwargs={
+                'speech_to_text_engine': speech_to_text_engine,
+                'audio': audio_source,
+                'recognize_callback': mycallback
+            })
+        recognize_thread.start()
+
+        for chunk in data:
+            audio_queue.put(chunk)
+        audio_source.completed_recording()
+        recognize_thread.join(30.0)
+        assert not recognize_thread.is_alive()
+    except Exception as e:
+        raise
+    finally:
+        audio_source.completed_recording()
 
 
-def streaming_recognize(data, username=None, password=None, instance_id=None):
-    ws_url = 'wss://api.%s.speech-to-text.watson.cloud.ibm.com/instances/%s/v1/recognize' \
-        % ('us-south', instance_id)
+    #ws_url = 'wss://api.%s.speech-to-text.watson.cloud.ibm.com/instances/%s/v1/recognize' % ('us-south', instance_id) 
     #end_of_phrase_silence_time
     #interim_results=true
     results = []
@@ -74,8 +108,9 @@ def transcribe_streaming_from_file(stream_file, verbose=False, **kwargs):
 
 
 def transcribe_streaming_from_data(content, 
-        chunk_size=8*1024, sample_rate_hertz=16000, audio_sample_size=2, realtime=False, verbose=False,
-        username=None, password=None, instance_id=None):
+        chunk_size=8*1024, sample_rate_hertz=16000, audio_sample_size=2, 
+        realtime=False, verbose=False,
+        password=None):
 
     assert audio_sample_size==2
 
@@ -93,7 +128,7 @@ def transcribe_streaming_from_data(content,
         delay_ms = 1000 / (sample_rate_hertz * audio_sample_size / chunk_size)
         requests = delay_generator(requests, delay_ms=delay_ms)
 
-    responses = streaming_recognize(requests, username=username, password=password, instance_id=instance_id)
+    responses = streaming_recognize(requests, password=password)
 
     transcript = ""
     first_latency = -1
@@ -121,11 +156,9 @@ if __name__ == '__main__':
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('stream', help='File to stream to the API')
     args = parser.parse_args()
-    username = os.environ['IBM_USERNAME']
     password = os.environ['IBM_PASSWORD']
-    instance_id = os.environ['IBM_INSTANCE_ID']
     transcript, transcript_json = transcribe_streaming_from_file(
-        args.stream, username=username, password=password, instance_id=instance_id,
+        args.stream, password=password,
         verbose=True, realtime=True)
     print(transcript_json)
     print(transcript)
