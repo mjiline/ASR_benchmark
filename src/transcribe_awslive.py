@@ -102,17 +102,19 @@ def unwrap_response(response_bin):
     return json.loads(json_bin)
 
 
+
 def delay_generator(content, delay_ms=0):
     for chunk in content:
         yield chunk
-        time.sleep(delay_ms/1000)
+        time.sleep(delay_ms/1000.0)
 
 
-async def handle_stream_reader(websocket, debug=False):
+async def handle_stream_reader(websocket, debug=True):
     start_time = time.time()
     all_responses = []
     try:
         while True:
+            await asyncio.sleep(0.001)
             response = await websocket.recv()
             response = unwrap_response(response) 
             latency = time.time() - start_time
@@ -123,7 +125,7 @@ async def handle_stream_reader(websocket, debug=False):
         return all_responses
 
 
-async def handle_stream_sender(websocket, data, debug=False):
+async def handle_stream_sender(websocket, data, debug=True):
         for chunk in data:
             if debug: print("Chunk len: %d" % len(chunk))
             await websocket.send(wrap_audio_chunk(chunk))
