@@ -6,18 +6,15 @@ from google.cloud import speech
 from google.cloud.speech import enums
 from google.cloud.speech import types
 import time
+from transcribe_utils import delay_generator
 
-def delay_generator(content, delay_ms=0):
-    for chunk in content:
-        yield chunk
-        time.sleep(delay_ms/1000)
 
-def transcribe_streaming_from_file(stream_file, verbose=True):
+def transcribe_streaming_from_file(stream_file, verbose=True, **kwargs):
     """Streams transcription of the given audio file."""
     with io.open(stream_file, 'rb') as audio_file:
         content = audio_file.read()
 
-    return transcribe_streaming_from_data(content, verbose)
+    return transcribe_streaming_from_data(content, verbose, **kwargs)
 
 
 def transcribe_streaming_from_data(content, chunk_size=4*1024, sample_rate_hertz=16000, audio_sample_size=2, realtime=False, verbose=True):
@@ -82,4 +79,4 @@ if __name__ == '__main__':
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('stream', help='File to stream to the API')
     args = parser.parse_args()
-    transcribe_streaming_from_file(args.stream, verbose=True)
+    transcribe_streaming_from_file(args.stream, verbose=True, realtime=True)

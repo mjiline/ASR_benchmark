@@ -7,7 +7,7 @@ import datetime, time
 import hashlib, hmac, base64, urllib.parse, binascii
 from struct import pack, unpack_from 
 import json
-
+from transcribe_utils import delay_generator
 
 def HashSHA256(s):
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
@@ -100,13 +100,6 @@ def unwrap_response(response_bin):
     header_len = unpack_from("!I", response_bin, 4)[0]
     json_bin = response_bin[3*4+header_len:-4]
     return json.loads(json_bin)
-
-
-
-def delay_generator(content, delay_ms=0):
-    for chunk in content:
-        yield chunk
-        time.sleep(delay_ms/1000.0)
 
 
 async def handle_stream_reader(websocket, debug=True):
