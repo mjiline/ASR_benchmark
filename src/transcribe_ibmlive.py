@@ -15,19 +15,20 @@ try:
 except ImportError:
     from queue import Queue, Full
 
+
 class IbmLiveRecognizeCallback(RecognizeCallback):
-    messages = []
-    start_time = 0
-    debug = False
+    
     def __init__(self, debug=False):
         RecognizeCallback.__init__(self)
         self.debug = debug
+        self.responses = []
+        self.start_time = 0
     
     def on_data(self, data):
         if self.debug : print("data: %s" % data)
         data = data.copy()
         data['latency'] = time.time() - self.start_time
-        self.messages.append(data)
+        self.responses.append(data)
 
     def on_transcription(self, transcript):
         if self.debug : print('transcript: %s' % transcript)
@@ -54,22 +55,26 @@ class IbmLiveRecognizeCallback(RecognizeCallback):
     def on_close(self):
         if self.debug: print("Connection closed")
 
+
 def recognize_thread_proc(speech_to_text_engine=None, **kwargs):
     speech_to_text_engine.recognize_using_websocket(
         content_type='audio/l16; rate=16000',
         interim_results=True,
         max_alternatives=1,
+        model='en-US_BroadbandModel',
         **kwargs)
 
-def streaming_recognize(data, password=None, audio_maxsize=1024*1024):
-    authenticator = IAMAuthenticator(password)
-    speech_to_text_engine = SpeechToTextV1(authenticator=authenticator)
 
-    audio_queue = Queue(maxsize=audio_maxsize)
-    audio_source = AudioSource(audio_queue, True, True)
-    mycallback = IbmLiveRecognizeCallback(debug=True)
+def streaming_recognize(data, password=None, audio_maxsize=1024*1024):
+    mycallback = IbmLiveRecognizeCallback(debug=False)
 
     try:
+        authenticator = IAMAuthenticator(password)
+        speech_to_text_engine = SpeechToTextV1(authenticator=authenticator)
+
+        audio_queue = Queue(maxsize=audio_maxsize)
+        audio_source = AudioSource(audio_queue, True, True)
+    
         recognize_thread = Thread(
             target=recognize_thread_proc, 
             kwargs={
@@ -88,6 +93,7 @@ def streaming_recognize(data, password=None, audio_maxsize=1024*1024):
         raise
     finally:
         audio_source.completed_recording()
+    return mycallback.responses
 
 
     #ws_url = 'wss://api.%s.speech-to-text.watson.cloud.ibm.com/instances/%s/v1/recognize' % ('us-south', instance_id) 
@@ -133,17 +139,17 @@ def transcribe_streaming_from_data(content,
     transcript = ""
     first_latency = -1
     for response in responses:
-        #if len(response['Transcript']['Results']) > 0 :
-        #    if verbose: print('result latency: %f' % response['latency']) 
-        #    if first_latency < 0 :
-        #        first_latency = response['latency']
+        if len(response['results']) > 0 and len(response['results'][0]['alternatives'])>0 :
+            if verbose: print('result latency: %f' % response['latency']) 
+            if first_latency < 0 :
+                first_latency = response['latency']
 
-        for utterance in result["results"]:
-            if "alternatives" not in utterance: raise UnknownValueError()
-            for hypothesis in utterance["alternatives"]:
-                if verbose: print(hypothesis)
-                if "transcript" in hypothesis:
-                    transcript += hypothesis["transcript"]
+        for result in response["results"]:
+            if "alternatives" not in result: raise UnknownValueError()
+            for alternative in result["alternatives"]:
+                if verbose: print(alternative)
+            if result['final'] :
+                transcript += result['alternatives'][0]['transcript']
 
     if verbose:  print('first_latency: %f' % first_latency) 
     transcript_json = {'first_latency': first_latency, 'responses':responses}
