@@ -98,9 +98,16 @@ def transcribe(speech_filepath, asr_system, settings, save_transcription=True):
 
     elif asr_system == 'googlecloudlive':
         try:
-            transcription, transcription_json = recognize_googlecloud_live(audio)
+            transcription, transcription_json = recognize_googlecloud_live(audio, recognition_params={})
         except:
             print('Google Cloud LIVE encountered some issue')
+            asr_could_not_be_reached = True
+
+    elif asr_system == 'googlecloudlive_ench':
+        try:
+            transcription, transcription_json = recognize_googlecloud_live(audio, recognition_params={'model': 'video'})
+        except Exception as e:
+            print('Google Cloud LIVE encountered some issue %s' % e)
             asr_could_not_be_reached = True
 
     elif asr_system == 'awslive':
@@ -333,13 +340,14 @@ def recognize_deepspeech(audio_data, cmdline):
     return transcript, {}
 
 
-def recognize_googlecloud_live(audio_data):
+def recognize_googlecloud_live(audio_data, recognition_params):
     # recognize speech using Google Cloud Speech
     #GOOGLE_CLOUD_SPEECH_CREDENTIALS_filepath = settings.get('credentials','google_cloud_speech_credentials_filepath')
     #GOOGLE_CLOUD_SPEECH_CREDENTIALS = codecs.open(GOOGLE_CLOUD_SPEECH_CREDENTIALS_filepath, 'r', 'UTF-8').read()
     import transcribe_googlecloudlive as googlelive
     transcript, transcription_json = googlelive.transcribe_streaming_from_data(
         audio_data.get_raw_data(), 
+        recognition_params=recognition_params,
         verbose=False)
 
     return transcript, transcription_json

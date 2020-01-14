@@ -7,6 +7,7 @@ from google.cloud.speech import enums
 from google.cloud.speech import types
 import time
 from transcribe_utils import delay_generator
+from google.protobuf.json_format import MessageToDict
 
 
 def transcribe_streaming_from_file(stream_file, verbose=True, **kwargs):
@@ -17,7 +18,9 @@ def transcribe_streaming_from_file(stream_file, verbose=True, **kwargs):
     return transcribe_streaming_from_data(content, verbose, **kwargs)
 
 
-def transcribe_streaming_from_data(content, chunk_size=4*1024, sample_rate_hertz=16000, audio_sample_size=2, realtime=False, verbose=True):
+def transcribe_streaming_from_data(content, 
+        chunk_size=4*1024, sample_rate_hertz=16000, audio_sample_size=2, realtime=False, verbose=True, 
+        recognition_params={}):
 
     assert audio_sample_size==2
 
@@ -34,10 +37,13 @@ def transcribe_streaming_from_data(content, chunk_size=4*1024, sample_rate_hertz
     requests = (types.StreamingRecognizeRequest(audio_content=chunk)
                 for chunk in stream)
 
+    language_code = recognition_params.get('language_code', 'en-US')
+    model = recognition_params.get('model', 'default')
     config = types.RecognitionConfig(
         encoding=enums.RecognitionConfig.AudioEncoding.LINEAR16,
         sample_rate_hertz=sample_rate_hertz,
-        language_code='en-US',
+        language_code=language_code,
+        model=model,
         max_alternatives=1,
         enable_automatic_punctuation=True)
     streaming_config = types.StreamingRecognitionConfig(
@@ -48,29 +54,42 @@ def transcribe_streaming_from_data(content, chunk_size=4*1024, sample_rate_hertz
     # streaming_recognize returns a generator.
     delay_ms = 0
     if realtime: delay_ms = 1000 / (sample_rate_hertz * audio_sample_size / chunk_size)
-    responses = client.streaming_recognize(streaming_config, delay_generator(requests, delay_ms=delay_ms) )
+    responses_pb = client.streaming_recognize(streaming_config, delay_generator(requests, delay_ms=delay_ms) )
+    start_time = time.time()
 
     transcript = ""
-    for response in responses:
+    responses = []
+    first_latency = -1
+    for response_pb in responses_pb:
         # Once the transcription has settled, the first result will contain the
         # is_final result. The other results will be for subsequent portions of
         # the audio.
-        for result in response.results:
+        latency = time.time() - start_time
+        response = MessageToDict(response_pb)
+        response['latency'] = latency
+        responses.append(response)
+        for result in response['results']:
             if verbose:
-                print('Finished: {}'.format(result.is_final))
-                print('Stability: {}'.format(result.stability))
+                print('Finished: {}'.format(result.get('isFinal', False)))
+                print('Stability: {}'.format(result['stability']))
             
             # The alternatives are ordered from most likely to least.
-            alternatives = result.alternatives
-            if result.is_final: 
-                transcript += alternatives[0].transcript.strip() + " "
+            alternatives = result['alternatives']
+            if len(alternatives) > 0 and first_latency < 0 :
+                first_latency = latency
+            if result.get('isFinal', False): 
+                transcript += alternatives[0]['transcript'].strip() + " "
 
             for alternative in alternatives:
                 if verbose:
-                    print('Confidence: {}'.format(alternative.confidence))
-                    print(u'Transcript: {}'.format(alternative.transcript))
-    return transcript, {}
-
+                    print('Confidence: {}'.format(alternative['confidence']))
+                    print(u'Transcript: {}'.format(alternative['transcript']))
+    
+    transcription_result = {
+        'responses': responses, 
+        'first_latency': first_latency
+    }
+    return transcript, transcription_result
 
 
 if __name__ == '__main__':
