@@ -99,15 +99,15 @@ def transcribe(speech_filepath, asr_system, settings, save_transcription=True):
     elif asr_system == 'googlecloudlive':
         try:
             transcription, transcription_json = recognize_googlecloud_live(audio, recognition_params={})
-        except:
-            print('Google Cloud LIVE encountered some issue')
+        except Exception as e:
+            print('Google Cloud LIVE encountered some issue %s' % e)
             asr_could_not_be_reached = True
 
     elif asr_system == 'googlecloudlive_ench':
         try:
             transcription, transcription_json = recognize_googlecloud_live(audio, recognition_params={'model': 'video'})
         except Exception as e:
-            print('Google Cloud LIVE encountered some issue %s' % e)
+            print('Google Cloud LIVE Ench encountered some issue %s' % e)
             asr_could_not_be_reached = True
 
     elif asr_system == 'awslive':
@@ -348,6 +348,7 @@ def recognize_googlecloud_live(audio_data, recognition_params):
     transcript, transcription_json = googlelive.transcribe_streaming_from_data(
         audio_data.get_raw_data(), 
         recognition_params=recognition_params,
+        realtime=True,
         verbose=False)
 
     return transcript, transcription_json
