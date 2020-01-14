@@ -75,10 +75,11 @@ def transcribe_streaming_from_data(content,
             
             # The alternatives are ordered from most likely to least.
             alternatives = result['alternatives']
-            if len(alternatives) > 0 and first_latency < 0 :
-                first_latency = latency
-            if result.get('isFinal', False): 
-                transcript += alternatives[0]['transcript'].strip() + " "
+            if len(alternatives) > 0 and 'transcript' in alternatives[0]:
+                if first_latency < 0 :
+                    first_latency = latency
+                if result.get('isFinal', False): 
+                    transcript += alternatives[0]['transcript'].strip() + " "
 
             for alternative in alternatives:
                 if verbose:
