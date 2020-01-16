@@ -2,11 +2,28 @@ import numpy
 import string
 
 
-def normalize_text(text, lower_case=False, remove_punctuation=False, write_numbers_in_letters=True):
+def normalize_text(text, 
+    lower_case=False, 
+    remove_punctuation=False, 
+    write_numbers_in_letters_inflect=True,
+    write_numbers_in_letters=False):
+
     '''
     Perform text normalization
     '''
     if lower_case: text = text.lower()
+
+    if write_numbers_in_letters_inflect:
+        import inflect
+        p = inflect.engine()
+        tr = []
+        for w in text.split():
+            if w[0].isdigit(): 
+                if w[-1]=='.':
+                    w = w[0:-1]
+                w = p.number_to_words(w)
+            tr.append(w)
+        text = " ".join(tr)
 
     # https://stackoverflow.com/questions/265960/best-way-to-strip-punctuation-from-a-string-in-python
     table = str.maketrans({key: None for key in string.punctuation})
@@ -23,8 +40,10 @@ def normalize_text(text, lower_case=False, remove_punctuation=False, write_numbe
         text = text.replace('7',' seven ')
         text = text.replace('8',' eight ')
         text = text.replace('9',' nine ')
-        # https://stackoverflow.com/questions/1546226/simple-way-to-remove-multiple-spaces-in-a-string
-        text = ' '.join(text.split())
+
+    # https://stackoverflow.com/questions/1546226/simple-way-to-remove-multiple-spaces-in-a-string
+    text = ' '.join(text.split())
+
     return text
 
 def wer2(r, h):
