@@ -268,6 +268,7 @@ def transcribe(speech_filepath, asr_system, settings, save_transcription=True):
     results['asr_time_elapsed'] = asr_time_elapsed
     results['asr_timestamp_ended'] = asr_timestamp_ended
     results['asr_timestamp_started'] = asr_timestamp_started
+    results['asr_could_not_be_reached'] = asr_could_not_be_reached
 
 
     json.dump(results, codecs.open(transcription_filepath_json, 'w', settings.get('general','predicted_transcription_encoding')), indent = 4, sort_keys=True)
