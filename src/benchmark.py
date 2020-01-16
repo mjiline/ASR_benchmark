@@ -4,16 +4,45 @@
 Use settings.ini to configure the benchmark.
 '''
 
+import codecs
+import collections
 import configparser
 import glob
 import os
-import transcribe
-import metrics
-import time
-import collections
 import shutil
-import codecs
+import time
+
 import pandas as pd
+
+import metrics
+import transcribe
+
+
+def get_speech_file_type(settings, data_folder):
+    # Automatically detect the speech file type.
+    # Heuristic: the detected speech file type is the one that has the more speech files in data_folder
+    #            e.g., if in data_folder there are 10 mp3s and 25 flacs, then choose flac
+    supported_speech_file_types = sorted(['flac', 'mp3', 'ogg', 'wav'])
+    speech_file_type = settings.get('general','speech_file_type')
+    if speech_file_type == 'auto':
+        maximum_number_of_speech_files = 0
+        detected_speech_file_type = None
+        for supported_speech_file_type in supported_speech_file_types:
+            potential_speech_filepaths = sorted(glob.glob(os.path.join(data_folder, '*.{0}'.format(supported_speech_file_type))))
+            if maximum_number_of_speech_files < len(potential_speech_filepaths):
+                maximum_number_of_speech_files = len(potential_speech_filepaths)
+                detected_speech_file_type = supported_speech_file_type
+        speech_file_type = detected_speech_file_type
+        print('Detected speech file type: {0}'.format(speech_file_type))
+        if detected_speech_file_type is None:
+            raise ValueError('You have set speech_file_type to be "auto" ({0}). We could not detect any speech file. Speech file extensions should be {1}.'
+                                .format(speech_file_type, supported_speech_file_types))
+
+    if speech_file_type not in supported_speech_file_types:
+        raise ValueError('You have set speech_file_type to be "{0}". This is invalid. speech_file_type should be {1}'.
+                            format(speech_file_type, supported_speech_file_types))
+
+    return speech_file_type
 
 def main():
 
@@ -25,37 +54,15 @@ def main():
     exp_name = settings.get('general','exp_name')
     asr_systems = settings.get('general','asr_systems').split(',')
     data_folders = settings.get('general','data_folders').split(',')
-    supported_speech_file_types = sorted(['flac', 'mp3', 'ogg', 'wav'])
     asr_systems = [s.strip() for s in asr_systems]
 
+    print('Configuration file: {0}'.format(settings_filepath))
     print('asr_systems: {0}'.format(asr_systems))
     print('data_folders: {0}'.format(data_folders))
 
     for data_folder in data_folders:
         print('\nWorking on data folder "{0}"'.format(data_folder))
-        speech_file_type = settings.get('general','speech_file_type')
-
-        # Automatically detect the speech file type.
-        # Heuristic: the detected speech file type is the one that has the more speech files in data_folder
-        #            e.g., if in data_folder there are 10 mp3s and 25 flacs, then choose flac
-        if speech_file_type == 'auto':
-            maximum_number_of_speech_files = 0
-            detected_speech_file_type = None
-            for supported_speech_file_type in supported_speech_file_types:
-                potential_speech_filepaths = sorted(glob.glob(os.path.join(data_folder, '*.{0}'.format(supported_speech_file_type))))
-                if maximum_number_of_speech_files < len(potential_speech_filepaths):
-                    maximum_number_of_speech_files = len(potential_speech_filepaths)
-                    detected_speech_file_type = supported_speech_file_type
-            speech_file_type = detected_speech_file_type
-            print('Detected speech file type: {0}'.format(speech_file_type))
-            if detected_speech_file_type is None:
-                raise ValueError('You have set speech_file_type to be "auto" in {1}. We couldn\'t detect any speech file. Speech file extensions should be {2}.'
-                                 .format(speech_file_type, settings_filepath, supported_speech_file_types))
-
-        if speech_file_type not in supported_speech_file_types:
-            raise ValueError('You have set speech_file_type to be "{0}" in {1}. This is invalid. speech_file_type should be flac, ogg, mp3, or wav.'.
-                             format(speech_file_type, settings_filepath))
-
+        speech_file_type = get_speech_file_type(settings, data_folder)
         speech_filepaths = sorted(glob.glob(os.path.join(data_folder, '*.{0}'.format(speech_file_type))))
 
         if settings.getint('general','max_data_files') > 0:
@@ -134,8 +141,8 @@ def main():
                     gold_transcription_filepath_base = '.'.join(speech_filepath.split('.')[:-1]) + '_'  + 'gold'
                     gold_transcription_filepath_text = gold_transcription_filepath_base  + '.txt'
                     gold_transcription = codecs.open(gold_transcription_filepath_text, 'r', settings.get('general','gold_transcription_encoding')).read()
-                    gold_transcription = metrics.normalize_text(gold_transcription, lower_case=True, remove_punctuation=True,write_numbers_in_letters=True)
-                    predicted_transcription = metrics.normalize_text(predicted_transcription, lower_case=True, remove_punctuation=True,write_numbers_in_letters=True)
+                    gold_transcription = metrics.normalize_text(gold_transcription, lower_case=True, remove_punctuation=True, write_numbers_in_letters=True)
+                    predicted_transcription = metrics.normalize_text(predicted_transcription, lower_case=True, remove_punctuation=True, write_numbers_in_letters=True)
 
                     all_predicted_transcription_file.write('{0}\n'.format(predicted_transcription))
                     all_gold_transcription_filepath.write('{0}\n'.format(gold_transcription))
