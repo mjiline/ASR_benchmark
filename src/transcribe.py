@@ -101,14 +101,16 @@ def transcribe(speech_filepath, asr_system, settings, save_transcription=True):
 
     elif asr_system == 'googlecloudlive':
         try:
-            transcription, transcription_json = recognize_googlecloud_live(audio, recognition_params={})
+            transcription, transcription_json = recognize_googlecloud_live(audio, 
+                recognition_params={})
         except Exception as e:
             print('Google Cloud LIVE encountered some issue %s' % e)
             asr_could_not_be_reached = True
 
     elif asr_system == 'googlecloudlive_ench':
         try:
-            transcription, transcription_json = recognize_googlecloud_live(audio, recognition_params={'model': 'video'})
+            transcription, transcription_json = recognize_googlecloud_live( audio, 
+                recognition_params={'model': 'video','use_enhanced': True})
         except Exception as e:
             print('Google Cloud LIVE Ench encountered some issue %s' % e)
             asr_could_not_be_reached = True
@@ -311,7 +313,7 @@ def recognize_amazon(audio_data, user_id,
     transcribe = boto3.client('transcribe', aws_access_key_id=access_key_id,
                           aws_secret_access_key=secret_access_key,
                           region_name=region)
-    job_name = "NAB-BEIT-2020"
+    job_name = "NAB-BEIT-2020-%f" % time.time()
     job_uri = "s3://%s/%s" % (bucket_name, file_name)
 
     try:
@@ -335,6 +337,7 @@ def recognize_amazon(audio_data, user_id,
     except Exception as e:
         raise e
     finally:
+        s3.delete_object(Bucket=bucket_name, Key=file_name)
         transcribe.delete_transcription_job(TranscriptionJobName=job_name)
 
     transcript_json = json.loads(transcript_bytes.decode('utf8'))
