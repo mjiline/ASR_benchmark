@@ -4,10 +4,13 @@ import speech_recognition as sr
 from os import path
 import time
 import json
+import io
 import os
 import sys
 import asr_speechmatics
 import codecs
+import urllib.request
+
 
 def transcribe(speech_filepath, asr_system, settings, save_transcription=True):
     '''
@@ -224,15 +227,19 @@ def transcribe(speech_filepath, asr_system, settings, save_transcription=True):
 
     elif asr_system == 'amazon':
         try:
-            bot_name = settings.get('credentials','amazon_bot_name')
-            bot_alias = settings.get('credentials','amazon_bot_alias')
             user_id = settings.get('credentials','amazon_user_id')
-            transcription,transcription_json = recognize_amazon(audio, bot_name, bot_alias, user_id,
+            bucket_name = settings.get('credentials','amazon_bucket')
+            file_name = settings.get('credentials','amazon_filename_wav')
+            transcription, transcription_json = recognize_amazon(audio, user_id,
                      content_type="audio/l16; rate=16000; channels=1", access_key_id=settings.get('credentials','amazon_access_key_id'),
-                     secret_access_key=settings.get('credentials','amazon_secret_access_key'), region=settings.get('credentials','amazon_region'))
+                     secret_access_key=settings.get('credentials','amazon_secret_access_key'), region=settings.get('credentials','amazon_region'),
+                     bucket_name=bucket_name, file_name=file_name)
             transcription_json['audioStream'] = ''
-        except sr.UnknownValueError:
-            print("Amazon not process the speech transcription request")
+            if len(transcription) == 0 :
+                raise Exception("Empty transcription")
+        except Exception as e:
+            print('Amazon not process the speech transcription request %s' % e)
+            asr_could_not_be_reached = True 
 
     elif asr_system == 'deepspeech':
         try:
@@ -269,8 +276,9 @@ def transcribe(speech_filepath, asr_system, settings, save_transcription=True):
     return transcription, transcription_skipped
 
 
-def recognize_amazon(audio_data, bot_name, bot_alias, user_id,
-                     content_type="audio/l16; rate=16000; channels=1", access_key_id=None, secret_access_key=None, region=None):
+def recognize_amazon(audio_data, user_id,
+                     content_type="audio/l16; rate=16000; channels=1", access_key_id=None, secret_access_key=None, region=None,
+                     bucket_name=None, file_name=None):
     """
     Performs speech recognition on ``audio_data`` (an ``AudioData`` instance).
 
@@ -281,10 +289,6 @@ def recognize_amazon(audio_data, bot_name, bot_alias, user_id,
     Source: https://github.com/Uberi/speech_recognition/pull/331
     """
     assert isinstance(audio_data, sr.AudioData), "Data must be audio data"
-    assert isinstance(bot_name, str), "``bot_name`` must be a string"
-    assert isinstance(bot_alias, str), "``bot_alias`` must be a string"
-    assert isinstance(user_id, str), "``user_id`` must be a string"
-    assert isinstance(content_type, str), "``content_type`` must be a string"
     assert access_key_id is None or isinstance(access_key_id, str), "``access_key_id`` must be a string"
     assert secret_access_key is None or isinstance(secret_access_key, str), "``secret_access_key`` must be a string"
     assert region is None or isinstance(region, str), "``region`` must be a string"
@@ -294,22 +298,48 @@ def recognize_amazon(audio_data, bot_name, bot_alias, user_id,
     except ImportError:
         raise sr.RequestError("missing boto3 module: ensure that boto3 is set up correctly.")
 
-    client = boto3.client('lex-runtime', aws_access_key_id=access_key_id,
+    #raw_data = audio_data.get_raw_data(convert_rate=16000, convert_width=2)
+    wav_data = audio_data.get_wav_data(convert_rate=16000, convert_width=2)
+    s3 = boto3.client('s3', aws_access_key_id=access_key_id,
+                        aws_secret_access_key=secret_access_key,
+                        region_name=region)
+
+    data = io.BytesIO(wav_data)
+    s3.upload_fileobj(data, bucket_name, file_name)
+
+    transcribe = boto3.client('transcribe', aws_access_key_id=access_key_id,
                           aws_secret_access_key=secret_access_key,
                           region_name=region)
+    job_name = "NAB-BEIT-2020"
+    job_uri = "s3://%s/%s" % (bucket_name, file_name)
 
-    raw_data = audio_data.get_raw_data(
-        convert_rate=16000, convert_width=2
-    )
+    try:
+        transcribe.start_transcription_job(
+            TranscriptionJobName=job_name,
+            Media={'MediaFileUri': job_uri},
+            MediaFormat='wav',
+            LanguageCode='en-US'
+        )
+        while True:
+            status = transcribe.get_transcription_job(TranscriptionJobName=job_name)
+            if status['TranscriptionJob']['TranscriptionJobStatus'] in ['COMPLETED', 'FAILED']:
+                break
+            print("Not ready yet...")
+            time.sleep(3)
 
-    accept = "text/plain; charset=utf-8"
-    response = client.post_content(botName=bot_name, botAlias=bot_alias, userId=user_id,
-                                   contentType=content_type, accept=accept, inputStream=raw_data)
+        #print(status)
+        transcript_url = status['TranscriptionJob']['Transcript']['TranscriptFileUri']
+        with urllib.request.urlopen(transcript_url) as response:
+            transcript_bytes = response.read()
+    except Exception as e:
+        raise e
+    finally:
+        transcribe.delete_transcription_job(TranscriptionJobName=job_name)
 
-    if not response["inputTranscript"]:
-        raise sr.UnknownValueError()
+    transcript_json = json.loads(transcript_bytes.decode('utf8'))
+    transcript = transcript_json['results']['transcripts'][0]['transcript']
 
-    return response["inputTranscript"], response
+    return transcript, transcript_json
 
 
 def recognize_deepspeech(audio_data, cmdline):
