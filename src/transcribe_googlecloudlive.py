@@ -39,11 +39,13 @@ def transcribe_streaming_from_data(content,
 
     language_code = recognition_params.get('language_code', 'en-US')
     model = recognition_params.get('model', 'default')
+    use_enhanced = recognition_params.get('use_enhanced', False)
     config = types.RecognitionConfig(
         encoding=enums.RecognitionConfig.AudioEncoding.LINEAR16,
         sample_rate_hertz=sample_rate_hertz,
         language_code=language_code,
         model=model,
+        use_enhanced=use_enhanced,
         max_alternatives=1,
         enable_automatic_punctuation=True)
     streaming_config = types.StreamingRecognitionConfig(
