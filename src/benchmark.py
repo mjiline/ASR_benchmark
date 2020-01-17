@@ -11,6 +11,7 @@ import glob
 import os
 import shutil
 import time
+import json
 
 import pandas as pd
 
@@ -43,6 +44,7 @@ def get_speech_file_type(settings, data_folder):
                             format(speech_file_type, supported_speech_file_types))
 
     return speech_file_type
+
 
 def get_speech_filepaths(settings, data_folder):
     speech_file_type = get_speech_file_type(settings, data_folder)
@@ -166,15 +168,28 @@ def evaluate_transcriptions_files(settings, speech_filepaths, asr_systems):
 
 
 def evaluate_latency(settings, speech_filepaths, asr_systems):
-    stats = {}
+    print('\n### Summaring Latencies...')
+
+    df = pd.DataFrame(columns =['file', 'service', 'first_latency'])
+    df = df.astype(dtype= {'first_latency': 'float'})
+
     for asr_system in asr_systems:
-        stats[asr_system] = {}
 
         for speech_filepath in speech_filepaths:
-            _, predicted_transcription_txt_filepath, _ = transcription_artifacts( speech_filepath, asr_system )
+            _, _, json_filepath = transcription_artifacts( speech_filepath, asr_system )
+            with open(json_filepath) as f: 
+                tinfo = json.load(f)
 
-            pass
+            first_latency = tinfo['transcription_json']['first_latency']
 
+            df = df.append({
+                'file': speech_filepath, 
+                'service': asr_system, 
+                'first_latency': first_latency
+                }, ignore_index=True)
+
+    print(df.head(100))
+    df.to_csv(settings.get('general','exp_name') + '_latency.csv')
 
 
 def main():
