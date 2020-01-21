@@ -263,7 +263,7 @@ def transcribe(speech_filepath, asr_system, settings, save_transcription=True):
         #print('Transcription saved in {0} and {1}'.format(transcription_filepath_text,transcription_filepath_json))
         codecs.open(transcription_filepath_text,'w', settings.get('general','predicted_transcription_encoding')).write(transcription)
 
-    print('transcription: {0}'.format(transcription))
+    print('transcription ({0}): {1}'.format(asr_system, transcription))
     results = {}
     results['transcription'] = transcription
     results['transcription_json'] = transcription_json

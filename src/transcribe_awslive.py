@@ -102,7 +102,7 @@ def unwrap_response(response_bin):
     return json.loads(json_bin)
 
 
-async def handle_stream_reader(websocket, debug=True):
+async def handle_stream_reader(websocket, debug=False):
     start_time = time.time()
     all_responses = []
     try:
@@ -118,7 +118,7 @@ async def handle_stream_reader(websocket, debug=True):
         return all_responses
 
 
-async def handle_stream_sender(websocket, data, debug=True):
+async def handle_stream_sender(websocket, data, debug=False):
         for chunk in data:
             if debug: print("Chunk len: %d" % len(chunk))
             await websocket.send(wrap_audio_chunk(chunk))
@@ -161,7 +161,7 @@ def transcribe_streaming_from_file(stream_file, verbose=False, **kwargs):
 
 
 def transcribe_streaming_from_data(content, 
-        chunk_size=8*1024, sample_rate_hertz=16000, audio_sample_size=2, realtime=False, verbose=False,
+        chunk_size=4*1024, sample_rate_hertz=16000, audio_sample_size=2, realtime=False, verbose=False,
         access_key=None, secret_key=None):
 
     assert audio_sample_size==2

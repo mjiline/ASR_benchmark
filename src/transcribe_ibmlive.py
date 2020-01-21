@@ -35,8 +35,7 @@ class IbmLiveRecognizeCallback(RecognizeCallback):
 
     def on_connected(self):
         if self.debug: print('Connection was successful')
-        assert self.start_time <= 0
-        self.start_time = time.time()
+        if self.start_time <= 0 : self.start_time = time.time()
 
     def on_error(self, error):
         if self.debug: print('Error received: {}'.format(error))
@@ -85,6 +84,7 @@ def streaming_recognize(data, password=None, audio_maxsize=1024*1024):
         recognize_thread.start()
 
         for chunk in data:
+            if mycallback.start_time <= 0 : mycallback.start_time = time.time()
             audio_queue.put(chunk)
         audio_source.completed_recording()
         recognize_thread.join(30.0)
@@ -114,7 +114,7 @@ def transcribe_streaming_from_file(stream_file, verbose=False, **kwargs):
 
 
 def transcribe_streaming_from_data(content, 
-        chunk_size=8*1024, sample_rate_hertz=16000, audio_sample_size=2, 
+        chunk_size=4*1024, sample_rate_hertz=16000, audio_sample_size=2, 
         realtime=False, verbose=False,
         password=None):
 
