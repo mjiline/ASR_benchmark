@@ -86,8 +86,9 @@ def transcribe_audio_files(settings, speech_filepaths, speech_file_type, asr_sys
             time.sleep(settings.getint('general','delay_in_seconds_between_transcriptions'))
 
 
-def transcription_artifacts(speech_filepath, asr_system):
-    base = '.'.join(speech_filepath.split('.')[:-1]) + '_'  + asr_system
+def transcription_artifacts(speech_filepath, asr_system=None):
+    asr_siffix = '_'  + asr_system if asr_system is not None else ''
+    base = '.'.join(speech_filepath.split('.')[:-1]) + asr_siffix
     text = base  + '.txt'
     json = base  + '.json'
     return base, text, json
@@ -167,6 +168,18 @@ def evaluate_transcriptions_files(settings, speech_filepaths, asr_systems):
     df.to_csv(settings.get('general','exp_name') + '_summary.csv')
 
 
+preceeding_silence_cache = {}
+def preseeding_silence(base_filepath):
+    if not base_filepath in preceeding_silence_cache:
+        silence_duration_in_ms = 0
+        timid_info_filepath =  base_filepath + '.wrd'
+        with open(timid_info_filepath) as fp:
+            word_start_in_samples = int(fp.readline().split()[0])
+            silence_duration_in_ms = word_start_in_samples * 1.0/16000
+        preceeding_silence_cache[base_filepath] = silence_duration_in_ms
+
+    return preceeding_silence_cache[base_filepath]
+
 def evaluate_latency(settings, speech_filepaths, asr_systems):
     print('\n### Summaring Latencies...')
 
@@ -177,14 +190,19 @@ def evaluate_latency(settings, speech_filepaths, asr_systems):
 
         for speech_filepath in speech_filepaths:
             _, _, json_filepath = transcription_artifacts( speech_filepath, asr_system )
+
             with open(json_filepath) as f: 
                 tinfo = json.load(f)
 
             first_latency = tinfo['transcription_json']['first_latency']
 
+            base_filepath, _, _ = transcription_artifacts( speech_filepath )
+            silence_offset = preseeding_silence(base_filepath)
+
             df = df.append({
                 'file': speech_filepath, 
                 'service': asr_system, 
+                'silence_offset': silence_offset,
                 'first_latency': first_latency
                 }, ignore_index=True)
 
