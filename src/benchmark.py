@@ -12,6 +12,7 @@ import os
 import shutil
 import time
 import json
+import argparse
 
 import pandas as pd
 
@@ -210,10 +211,9 @@ def evaluate_latency(settings, speech_filepaths, asr_systems):
     df.to_csv(settings.get('general','exp_name') + '_latency.csv')
 
 
-def main():
+def main(settings_filepath=None):
     # Load setting file
     settings = configparser.ConfigParser()
-    settings_filepath = 'settings.ini'
     settings.read(settings_filepath)
 
     asr_systems = settings.get('general','asr_systems').split(',')
@@ -241,5 +241,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', nargs='?', default='settings.ini', help='config file')
+    args = parser.parse_args()
+
+    main(settings_filepath=args.config)
     #cProfile.run('main()') # if you want to do some profiling
