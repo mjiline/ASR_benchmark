@@ -4,6 +4,7 @@ import io, os, argparse
 import datetime, time
 import json
 from transcribe_utils import delay_generator
+import speech_recognition as sr
 
 from ibm_watson import SpeechToTextV1
 from ibm_watson.websocket import RecognizeCallback, AudioSource
@@ -145,7 +146,7 @@ def transcribe_streaming_from_data(content,
                 first_latency = response['latency']
 
         for result in response["results"]:
-            if "alternatives" not in result: raise UnknownValueError()
+            if "alternatives" not in result: raise sr.UnknownValueError()
             for alternative in result["alternatives"]:
                 if verbose: print(alternative)
             if result['final'] :
