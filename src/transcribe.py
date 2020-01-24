@@ -115,11 +115,13 @@ def transcribe(speech_filepath, asr_system, settings, save_transcription=True):
             print('Google Cloud LIVE Ench encountered some issue %s' % e)
             asr_could_not_be_reached = True
 
-    elif asr_system == 'awslive':
+    elif asr_system == 'awslive' or asr_system == 'awslivemed':
         try:
+            medical = asr_system == 'awslivemed'
             transcription, transcription_json = recognize_aws_live(audio, 
                 access_key=settings.get('credentials','amazon_access_key_id'),
-                secret_key=settings.get('credentials','amazon_secret_access_key'))
+                secret_key=settings.get('credentials','amazon_secret_access_key'),
+                medical=medical)
         except Exception as e:
             print('Google Cloud LIVE encountered some issue %s' % e)
             asr_could_not_be_reached = True            

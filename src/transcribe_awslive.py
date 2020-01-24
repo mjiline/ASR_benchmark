@@ -25,7 +25,7 @@ def getSignatureKey(key, dateStamp, regionName, serviceName):
     return kSigning
 
 
-def create_request_url(region="us-east-1", access_key=None, secret_key=None, debug=False):
+def create_request_url(region="us-east-1", access_key=None, secret_key=None, debug=False, medical=None):
     assert access_key != None and secret_key != None
 
     method = "GET"
@@ -35,11 +35,13 @@ def create_request_url(region="us-east-1", access_key=None, secret_key=None, deb
     t = datetime.datetime.utcnow()
     amz_date = t.strftime('%Y%m%dT%H%M%SZ')
     datestamp = t.strftime('%Y%m%d')
-    canonical_uri = "/stream-transcription-websocket"
     canonical_headers = "host:" + host + "\n"
     signed_headers = "host"                        
     algorithm = "AWS4-HMAC-SHA256"
     credential_scope = datestamp + "/" + region + "/" + service + "/" + "aws4_request"
+
+    if medical: canonical_uri = "/medical-stream-transcription-websocket"
+    else:       canonical_uri = "/stream-transcription-websocket"
 
     canonical_querystring  = "X-Amz-Algorithm=" + algorithm
     canonical_querystring += "&X-Amz-Credential=" + urllib.parse.quote_plus(access_key + "/" + credential_scope)
@@ -47,6 +49,9 @@ def create_request_url(region="us-east-1", access_key=None, secret_key=None, deb
     canonical_querystring += "&X-Amz-Expires=300"
     canonical_querystring += "&X-Amz-SignedHeaders=" + signed_headers
     canonical_querystring += "&language-code=en-US&media-encoding=pcm&sample-rate=16000"
+    if medical:
+        canonical_querystring += "&specialty=PRIMARYCARE"
+        canonical_querystring += "&type=DICTATION"
 
     payload_hash = HashSHA256("")
 
@@ -162,7 +167,7 @@ def transcribe_streaming_from_file(stream_file, verbose=False, **kwargs):
 
 def transcribe_streaming_from_data(content, 
         chunk_size=4*1024, sample_rate_hertz=16000, audio_sample_size=2, realtime=False, verbose=False,
-        access_key=None, secret_key=None):
+        access_key=None, secret_key=None, medical=False):
 
     assert audio_sample_size==2
 
@@ -183,7 +188,7 @@ def transcribe_streaming_from_data(content,
         requests = delay_generator(requests, delay_ms=delay_ms)
 
     ### responses = client.streaming_recognize(streaming_config, delay_generator(requests, delay_ms=delay_ms) )
-    url = create_request_url(access_key=access_key, secret_key=secret_key)
+    url = create_request_url(access_key=access_key, secret_key=secret_key, medical=medical)
     responses = streaming_recognize(url, requests)
 
     transcript = ""
@@ -215,6 +220,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     access_key = os.environ['AWS_ACCESS_KEY_ID']
     secret_key = os.environ['AWS_SECRET_ACCESS_KEY']
-    transcript, transcript_json = transcribe_streaming_from_file(args.stream, access_key=access_key, secret_key=secret_key, verbose=True, realtime=True)
+    transcript, transcript_json = transcribe_streaming_from_file(args.stream, 
+        access_key=access_key, secret_key=secret_key, 
+        verbose=True, realtime=True, medical=True)
     print(transcript_json)
     print(transcript)
