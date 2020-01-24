@@ -56,8 +56,8 @@ def transcribe_streaming_from_data(content,
     # streaming_recognize returns a generator.
     delay_ms = 0
     if realtime: delay_ms = 1000 / (sample_rate_hertz * audio_sample_size / chunk_size)
-    responses_pb = client.streaming_recognize(streaming_config, delay_generator(requests, delay_ms=delay_ms) )
     start_time = time.time()
+    responses_pb = client.streaming_recognize(streaming_config, delay_generator(requests, delay_ms=delay_ms) )
 
     transcript = ""
     responses = []
