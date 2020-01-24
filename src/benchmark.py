@@ -181,30 +181,56 @@ def preseeding_silence(base_filepath):
 
     return preceeding_silence_cache[base_filepath]
 
+def transcript_compare(reference, candidate):
+    cs = candidate.split()
+    if len(cs) <= 0: return False
+    return reference.split()[0].casefold() == cs[0].casefold()
+
+def evaluate_latency_find_first_correct(tinfo):
+    correct_latency = -1
+    transcription = tinfo['transcription'].casefold()
+    responses = tinfo['transcription_json']['responses']
+    for response in responses:
+        results = response['Transcript']['Results'] if 'Transcript' in response else response['results']
+        for result in results:
+            alts = result['Alternatives'] if 'Alternatives' in result else result['alternatives']
+            for a in alts:
+                
+                t = a['Transcript'] if 'Transcript' in a else a['transcript'] if 'transcript' in a else ''
+                if transcript_compare(transcription, t) and correct_latency<0:
+                    correct_latency = response['latency']
+                if correct_latency>=0 : break
+            if correct_latency>=0 : break
+        if correct_latency>=0 : break
+
+    return correct_latency
+
 def evaluate_latency(settings, speech_filepaths, asr_systems):
     print('\n### Summaring Latencies...')
 
-    df = pd.DataFrame(columns =['file', 'service', 'first_latency'])
-    df = df.astype(dtype= {'first_latency': 'float'})
+    df = pd.DataFrame(columns =['file', 'service', 'first_latency', 'correct_latency'])
+    df = df.astype(dtype= {'first_latency': 'float', 'correct_latency': 'float'})
 
     for asr_system in asr_systems:
 
         for speech_filepath in speech_filepaths:
+            base_filepath, _, _ = transcription_artifacts( speech_filepath )
+            silence_offset = preseeding_silence(base_filepath)
+            
             _, _, json_filepath = transcription_artifacts( speech_filepath, asr_system )
-
             with open(json_filepath) as f: 
                 tinfo = json.load(f)
 
             first_latency = tinfo['transcription_json']['first_latency']
 
-            base_filepath, _, _ = transcription_artifacts( speech_filepath )
-            silence_offset = preseeding_silence(base_filepath)
-
+            correct_latency = evaluate_latency_find_first_correct(tinfo)
+            
             df = df.append({
                 'file': speech_filepath, 
                 'service': asr_system, 
                 'silence_offset': silence_offset,
-                'first_latency': first_latency
+                'first_latency': first_latency,
+                'correct_latency': correct_latency
                 }, ignore_index=True)
 
     print(df.head(100))
@@ -241,7 +267,6 @@ def main(settings_filepath=None):
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', nargs='?', default='settings.ini', help='config file')
     args = parser.parse_args()
