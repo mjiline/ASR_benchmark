@@ -11,6 +11,12 @@ import asr_speechmatics
 import codecs
 import urllib.request
 
+def transcription_artifacts(speech_filepath, asr_system=None):
+    asr_siffix = '_'  + asr_system if asr_system is not None else ''
+    base = '.'.join(speech_filepath.split('.')[:-1]) + asr_siffix
+    text = base  + '.txt'
+    json = base  + '.json'
+    return base, text, json
 
 def transcribe(speech_filepath, asr_system, settings, save_transcription=True):
     '''
@@ -19,9 +25,8 @@ def transcribe(speech_filepath, asr_system, settings, save_transcription=True):
      - transcription_skipped: Boolean indicating if the speech file was sent to the ASR API.
     '''
     transcription_json = ''
-    transcription_filepath_base = '.'.join(speech_filepath.split('.')[:-1]) + '_'  + asr_system
-    transcription_filepath_text = transcription_filepath_base  + '.txt'
-    transcription_filepath_json = transcription_filepath_base  + '.json'
+
+    _, transcription_filepath_text, transcription_filepath_json = transcription_artifacts(speech_filepath, asr_system)
 
     # If there already exists a transcription file,  we may skip it depending on the user settings.  
     if asr_system != 'deepspeech': # always redo deepspeech files
@@ -43,6 +48,7 @@ def transcribe(speech_filepath, asr_system, settings, save_transcription=True):
     r = sr.Recognizer()
     with sr.AudioFile(speech_filepath) as source:
         audio = r.record(source)  # read the entire audio file
+
 
     transcription = ''
     asr_could_not_be_reached = False

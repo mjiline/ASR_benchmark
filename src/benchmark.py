@@ -87,13 +87,6 @@ def transcribe_audio_files(settings, speech_filepaths, speech_file_type, asr_sys
             time.sleep(settings.getint('general','delay_in_seconds_between_transcriptions'))
 
 
-def transcription_artifacts(speech_filepath, asr_system=None):
-    asr_siffix = '_'  + asr_system if asr_system is not None else ''
-    base = '.'.join(speech_filepath.split('.')[:-1]) + asr_siffix
-    text = base  + '.txt'
-    json = base  + '.json'
-    return base, text, json
-
 
 def evaluate_transcriptions_files(settings, speech_filepaths, asr_systems):
     # Evaluate transcriptions
@@ -120,8 +113,8 @@ def evaluate_transcriptions_files(settings, speech_filepaths, asr_systems):
             number_of_edits[edit_type] = 0
 
         for speech_filepath in speech_filepaths:
-            _, gold_transcription_filepath_text, _ = transcription_artifacts( speech_filepath, 'gold' )
-            _, predicted_transcription_txt_filepath, _ = transcription_artifacts( speech_filepath, asr_system )
+            _, gold_transcription_filepath_text, _ = transcribe.transcription_artifacts( speech_filepath, 'gold' )
+            _, predicted_transcription_txt_filepath, _ = transcribe.transcription_artifacts( speech_filepath, asr_system )
 
             if not os.path.isfile(predicted_transcription_txt_filepath):
                 number_of_missing_predicted_transcription_txt_files += 1
@@ -214,10 +207,10 @@ def evaluate_latency(settings, speech_filepaths, asr_systems):
     for asr_system in asr_systems:
 
         for speech_filepath in speech_filepaths:
-            base_filepath, _, _ = transcription_artifacts( speech_filepath )
+            base_filepath, _, _ = transcribe.transcription_artifacts( speech_filepath )
             silence_offset = preseeding_silence(base_filepath)
             
-            _, _, json_filepath = transcription_artifacts( speech_filepath, asr_system )
+            _, _, json_filepath = transcribe.transcription_artifacts( speech_filepath, asr_system )
             with open(json_filepath) as f: 
                 tinfo = json.load(f)
 
