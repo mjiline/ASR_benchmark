@@ -16,6 +16,25 @@ import codecs
 import urllib.request
 import numpy as np
 
+def transform_additive_white_noise(audio, snr=10, debug=False):
+    assert audio.sample_width == 2
+    idata = array.array('h', audio.get_raw_data())
+
+    s2 = sum([ s*s for s in idata[0:audio.sample_rate]])/audio.sample_rate
+    alpha = 1/audio.sample_rate
+    noised = []
+    for s in idata:
+        s2 = s*s * alpha + s2 * (1-alpha)
+        noised_sample = np.clip(s + math.sqrt(s2) / snr * np.random.randn(1), -32768, 32767)
+        noised.append( int(noised_sample) )
+    idata2 = array.array('h', noised)
+    rdata = idata2.tobytes()
+    audio = sr.AudioData(rdata, audio.sample_rate, audio.sample_width)
+    if debug:
+        with open("audio_new.wav", "wb") as binary_file:
+            binary_file.write(audio.get_wav_data())
+    return audio
+
 def transcription_artifacts(speech_filepath, asr_system=None):
     asr_siffix = '_'  + asr_system if asr_system is not None else ''
     base = '.'.join(speech_filepath.split('.')[:-1]) + asr_siffix
@@ -59,21 +78,8 @@ def transcribe(speech_filepath, asr_system, settings, save_transcription=True):
        gaussian_noise = settings.getint('transforms','gaussian_noise')
     except configparser.NoOptionError as e:
         pass
-
     if gaussian_noise > 0:
-        assert audio.sample_width == 2
-        gaussian_noise = gaussian_noise/100
-        idata = array.array('h', audio.get_raw_data())
-        spow = sum([ s*s for s in idata ])
-        spow_n = sum([ s>0 for s in idata ])
-        spow = spow /spow_n
-
-        noise = np.clip( gaussian_noise*math.sqrt(spow)*np.random.randn(len(idata)), -32768, 32767)
-        idata2 = array.array('h', [d + int(n) for d, n in zip(idata, noise)])
-        rdata = idata2.tobytes()
-        audio_new = sr.AudioData(rdata, audio.sample_rate, audio.sample_width)
-        with open("audio_new.wav", "wb") as binary_file:
-            binary_file.write(audio_new.get_wav_data())
+        audio = transform_additive_white_noise(audio, snr=gaussian_noise)
 
     transcription = ''
     asr_could_not_be_reached = False
