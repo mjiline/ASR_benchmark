@@ -6,3 +6,5 @@ data/**
 *__pycache__*
 .README.md.html
 .vscode/*
+src/*.csv
+src/*.txt
