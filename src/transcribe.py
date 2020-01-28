@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 
 import speech_recognition as sr
+import configparser
 from os import path
 import time
 import json
 import io
 import os
 import sys
+import copy
+import array
+import math
 import asr_speechmatics
 import codecs
 import urllib.request
+import numpy as np
 
 def transcription_artifacts(speech_filepath, asr_system=None):
     asr_siffix = '_'  + asr_system if asr_system is not None else ''
@@ -49,6 +54,26 @@ def transcribe(speech_filepath, asr_system, settings, save_transcription=True):
     with sr.AudioFile(speech_filepath) as source:
         audio = r.record(source)  # read the entire audio file
 
+    gaussian_noise = 0
+    try:
+       gaussian_noise = settings.getint('transforms','gaussian_noise')
+    except configparser.NoOptionError as e:
+        pass
+
+    if gaussian_noise > 0:
+        assert audio.sample_width == 2
+        gaussian_noise = gaussian_noise/100
+        idata = array.array('h', audio.get_raw_data())
+        spow = sum([ s*s for s in idata ])
+        spow_n = sum([ s>0 for s in idata ])
+        spow = spow /spow_n
+
+        noise = np.clip( gaussian_noise*math.sqrt(spow)*np.random.randn(len(idata)), -32768, 32767)
+        idata2 = array.array('h', [d + int(n) for d, n in zip(idata, noise)])
+        rdata = idata2.tobytes()
+        audio_new = sr.AudioData(rdata, audio.sample_rate, audio.sample_width)
+        with open("audio_new.wav", "wb") as binary_file:
+            binary_file.write(audio_new.get_wav_data())
 
     transcription = ''
     asr_could_not_be_reached = False
